@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         个人信息替换工具
+// @name         parks2个人信息替换工具
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
+// @license      MIT
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
