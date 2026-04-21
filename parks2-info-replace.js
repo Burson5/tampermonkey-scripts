@@ -4,7 +4,7 @@
 // @version      1.0
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
-// @match        *://*/*
+// @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
