@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
@@ -158,6 +158,20 @@
         const dts = document.querySelectorAll('dt.block-mypage-member-info-label');
         dts.forEach(dt => {
             const labelText = dt.textContent.trim();
+
+            // 为“氏名（漢字）”添加双击打开设置面板的功能
+            if (labelText === '氏名（漢字）') {
+                if (!dt.hasAttribute('data-has-dblclick')) {
+                    dt.style.cursor = 'pointer';
+                    dt.title = '双击打开替换设置';
+                    dt.addEventListener('dblclick', (e) => {
+                        e.preventDefault();
+                        createSettingsPanel();
+                    });
+                    dt.setAttribute('data-has-dblclick', 'true');
+                }
+            }
+
             // 如果是我们需要替换的标签
             if (TARGET_LABELS.includes(labelText)) {
                 const dd = dt.nextElementSibling;
