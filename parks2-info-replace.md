@@ -1,4 +1,4 @@
-# parks2个人信息替换工具 (Tampermonkey Script)
+# parks2-info-replace (Tampermonkey Script)
 
 这是一个用于 **NAMCO Parks (ナムコパークス)** 个人中心页面的信息替换脚本。它可以帮助用户在页面上临时替换显示的个人信息（如姓名、地址、性别等），并支持从当前页面一键提取真实信息作为模板。
 

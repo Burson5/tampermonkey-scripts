@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         parks2个人信息替换工具
+// @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
