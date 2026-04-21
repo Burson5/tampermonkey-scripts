@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
@@ -9,11 +9,36 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    // ==================== 初始防闪烁处理 ====================
+    // 在最开始注入样式，将目标元素设为透明
+    (function injectHidingStyle() {
+        const style = document.createElement('style');
+        style.id = 'hide-member-info-initial';
+        style.textContent = `
+            .block-mypage-member-info-value { 
+                opacity: 0 !important; 
+                transition: opacity 0.3s ease-in-out; 
+            }
+        `;
+        // 由于是 document-start，可能 head 还没出来，直接挂到 documentElement 上
+        if (document.documentElement) {
+            document.documentElement.appendChild(style);
+        } else {
+            const observer = new MutationObserver(() => {
+                if (document.documentElement) {
+                    document.documentElement.appendChild(style);
+                    observer.disconnect();
+                }
+            });
+            observer.observe(document, { childList: true, subtree: true });
+        }
+    })();
 
     // ==================== 配置区域 ====================
 
@@ -303,6 +328,15 @@
     function applyReplacements() {
         const replacements = loadReplacements();
         replaceMemberInfo(replacements);
+        
+        // 首次替换完成后，移除隐藏样式，使内容显示出来
+        const style = document.getElementById('hide-member-info-initial');
+        if (style) {
+            // 使用 setTimeout 确保 DOM 已经更新完毕再显示，增加一点平滑感
+            setTimeout(() => {
+                style.remove();
+            }, 50);
+        }
     }
 
     /**
