@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       You
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
+// @match        https://parks2.bandainamco-am.co.jp/admission_use_ticket.html
 // @license      MIT
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
@@ -21,7 +22,8 @@
         const style = document.createElement('style');
         style.id = 'hide-member-info-initial';
         style.textContent = `
-            .block-mypage-member-info-value { 
+            .block-mypage-member-info-value,
+            .block-mypage-coupon-list-item-code-value { 
                 opacity: 0 !important; 
                 transition: opacity 0.3s ease-in-out; 
             }
@@ -127,6 +129,8 @@
      */
     function extractCurrentDataFromPage() {
         const extracted = {};
+        
+        // --- 1. 从个人信息页提取 ---
         const dts = document.querySelectorAll('dt.block-mypage-member-info-label');
         dts.forEach(dt => {
             const labelText = dt.textContent.trim();
@@ -145,6 +149,17 @@
                 }
             }
         });
+
+        // --- 2. 从入场券详情页提取姓名 (如果个人信息页没提取到) ---
+        if (!extracted['氏名（漢字）']) {
+            const ticketNameElem = document.querySelector('.block-mypage-coupon-list-item-code-value');
+            if (ticketNameElem) {
+                extracted['氏名（漢字）'] = ticketNameElem.hasAttribute('data-original-value') 
+                    ? ticketNameElem.getAttribute('data-original-value') 
+                    : ticketNameElem.textContent.trim();
+            }
+        }
+
         return extracted;
     }
 
@@ -154,22 +169,14 @@
      * 针对你提供的 HTML 结构，精确替换会员信息
      */
     function replaceMemberInfo(replacements) {
-        // 查找包含特定标签文本的 dt 元素
+        // --- 1. 处理个人信息页 (dt/dd 结构) ---
         const dts = document.querySelectorAll('dt.block-mypage-member-info-label');
         dts.forEach(dt => {
             const labelText = dt.textContent.trim();
 
             // 为“氏名（漢字）”添加双击打开设置面板的功能
             if (labelText === '氏名（漢字）') {
-                if (!dt.hasAttribute('data-has-dblclick')) {
-                    dt.style.cursor = 'pointer';
-                    dt.title = '双击打开替换设置';
-                    dt.addEventListener('dblclick', (e) => {
-                        e.preventDefault();
-                        createSettingsPanel();
-                    });
-                    dt.setAttribute('data-has-dblclick', 'true');
-                }
+                setupDblClick(dt);
             }
 
             // 如果是我们需要替换的标签
@@ -177,32 +184,71 @@
                 const dd = dt.nextElementSibling;
                 if (dd && dd.classList.contains('block-mypage-member-info-value')) {
                     // 核心：在任何替换发生前，如果尚未保存原始值，则保存它
-                    if (!dd.hasAttribute('data-original-value')) {
-                        // 提取原始文本（包含 span 内的内容）
-                        const originalVal = (labelText === '性別' && dd.querySelector('span')) 
-                            ? dd.querySelector('span').textContent.trim() 
-                            : dd.textContent.trim();
-                        dd.setAttribute('data-original-value', originalVal);
-                    }
+                    saveOriginalValue(dd, labelText);
 
                     const replacement = replacements[labelText];
                     // 仅当替换值不为空时执行替换
                     if (replacement !== undefined && replacement.trim() !== '') {
-                        // 替换 dd 的内容，如果标签是 性別，保持 span 结构（如果有的话）
-                        if (labelText === '性別') {
-                            const span = dd.querySelector('span');
-                            if (span) {
-                                span.textContent = replacement;
-                            } else {
-                                dd.textContent = replacement;
-                            }
-                        } else {
-                            dd.textContent = replacement;
-                        }
+                        applyValue(dd, labelText, replacement);
                     }
                 }
             }
         });
+
+        // --- 2. 处理入场券详情页 (特定 class) ---
+        const ticketNameElem = document.querySelector('.block-mypage-coupon-list-item-code-value');
+        if (ticketNameElem) {
+            setupDblClick(ticketNameElem);
+            saveOriginalValue(ticketNameElem, '氏名（漢字）');
+            
+            const replacement = replacements['氏名（漢字）'];
+            if (replacement !== undefined && replacement.trim() !== '') {
+                ticketNameElem.textContent = replacement;
+            }
+        }
+    }
+
+    /**
+     * 保存原始值到 data 属性
+     */
+    function saveOriginalValue(elem, labelText) {
+        if (!elem.hasAttribute('data-original-value')) {
+            const originalVal = (labelText === '性別' && elem.querySelector('span')) 
+                ? elem.querySelector('span').textContent.trim() 
+                : elem.textContent.trim();
+            elem.setAttribute('data-original-value', originalVal);
+        }
+    }
+
+    /**
+     * 应用替换值
+     */
+    function applyValue(elem, labelText, replacement) {
+        if (labelText === '性別') {
+            const span = elem.querySelector('span');
+            if (span) {
+                span.textContent = replacement;
+            } else {
+                elem.textContent = replacement;
+            }
+        } else {
+            elem.textContent = replacement;
+        }
+    }
+
+    /**
+     * 设置双击打开面板
+     */
+    function setupDblClick(elem) {
+        if (!elem.hasAttribute('data-has-dblclick')) {
+            elem.style.cursor = 'pointer';
+            elem.title = '双击打开替换设置';
+            elem.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                createSettingsPanel();
+            });
+            elem.setAttribute('data-has-dblclick', 'true');
+        }
     }
 
     // ==================== 动态内容监听 ====================
