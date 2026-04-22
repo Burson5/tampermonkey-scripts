@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       burson5@qq.com
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html*
@@ -15,32 +15,6 @@
 
 (function() {
     'use strict';
-
-    // ==================== 初始防闪烁处理 ====================
-    // 在最开始注入样式，将目标元素设为透明
-    (function injectHidingStyle() {
-        const style = document.createElement('style');
-        style.id = 'hide-member-info-initial';
-        style.textContent = `
-            .block-mypage-member-info-value,
-            .block-mypage-coupon-list-item-code-value { 
-                opacity: 0 !important; 
-                transition: opacity 0.3s ease-in-out; 
-            }
-        `;
-        // 由于是 document-start，可能 head 还没出来，直接挂到 documentElement 上
-        if (document.documentElement) {
-            document.documentElement.appendChild(style);
-        } else {
-            const observer = new MutationObserver(() => {
-                if (document.documentElement) {
-                    document.documentElement.appendChild(style);
-                    observer.disconnect();
-                }
-            });
-            observer.observe(document, { childList: true, subtree: true });
-        }
-    })();
 
     // ==================== 配置区域 ====================
 
@@ -80,6 +54,37 @@
 
     // localStorage 键名
     const STORAGE_KEY = 'personal_info_replacements';
+
+    // ==================== 初始防闪烁处理 ====================
+    // 核心思想：在元素被替换前保持不可见，替换后通过 data-replaced 属性显示
+    (function injectHidingStyle() {
+        const style = document.createElement('style');
+        style.id = 'hide-member-info-initial';
+        style.textContent = `
+            /* 初始隐藏目标元素 */
+            .block-mypage-member-info-value:not([data-replaced="true"]),
+            .block-mypage-coupon-list-item-code-value:not([data-replaced="true"]) { 
+                opacity: 0 !important; 
+            }
+            /* 替换后显示，带一点淡入效果 */
+            .block-mypage-member-info-value[data-replaced="true"],
+            .block-mypage-coupon-list-item-code-value[data-replaced="true"] { 
+                opacity: 1 !important;
+                transition: opacity 0.2s ease-in-out; 
+            }
+        `;
+        if (document.documentElement) {
+            document.documentElement.appendChild(style);
+        } else {
+            const observer = new MutationObserver(() => {
+                if (document.documentElement) {
+                    document.documentElement.appendChild(style);
+                    observer.disconnect();
+                }
+            });
+            observer.observe(document, { childList: true, subtree: true });
+        }
+    })();
 
     // ==================== 数据管理 ====================
 
@@ -183,6 +188,9 @@
             if (TARGET_LABELS.includes(labelText)) {
                 const dd = dt.nextElementSibling;
                 if (dd && dd.classList.contains('block-mypage-member-info-value')) {
+                    // 如果已经处理过，直接跳过，防止 MutationObserver 无限循环
+                    if (dd.hasAttribute('data-replaced')) return;
+
                     // 核心：在任何替换发生前，如果尚未保存原始值，则保存它
                     saveOriginalValue(dd, labelText);
 
@@ -190,6 +198,17 @@
                     // 仅当替换值不为空时执行替换
                     if (replacement !== undefined && replacement.trim() !== '') {
                         applyValue(dd, labelText, replacement);
+                    } else {
+                        // 即使不替换，也要标记为已处理，以便 CSS 显示它
+                        dd.setAttribute('data-replaced', 'true');
+                    }
+                }
+            } else {
+                // 对于不需要修改的标签（如邮箱、ID等），也需要标记为已处理，否则会被 CSS 隐藏
+                const dd = dt.nextElementSibling;
+                if (dd && dd.classList.contains('block-mypage-member-info-value')) {
+                    if (!dd.hasAttribute('data-replaced')) {
+                        dd.setAttribute('data-replaced', 'true');
                     }
                 }
             }
@@ -197,7 +216,7 @@
 
         // --- 2. 处理入场券详情页 (特定 class) ---
         const ticketNameElem = document.querySelector('.block-mypage-coupon-list-item-code-value');
-        if (ticketNameElem) {
+        if (ticketNameElem && !ticketNameElem.hasAttribute('data-replaced')) {
             setupDblClick(ticketNameElem);
             saveOriginalValue(ticketNameElem, '氏名（漢字）');
             
@@ -205,6 +224,8 @@
             if (replacement !== undefined && replacement.trim() !== '') {
                 ticketNameElem.textContent = replacement;
             }
+            // 无论是否替换，都标记为已处理以显示内容
+            ticketNameElem.setAttribute('data-replaced', 'true');
         }
     }
 
@@ -234,6 +255,8 @@
         } else {
             elem.textContent = replacement;
         }
+        // 标记已替换，CSS 将使其可见
+        elem.setAttribute('data-replaced', 'true');
     }
 
     /**
@@ -256,15 +279,25 @@
     /**
      * 使用 MutationObserver 监听 DOM 变化，处理动态加载的内容
      */
-    function setupMutationObserver(replacements) {
+    function setupMutationObserver() {
+        // 使用 document.documentElement 可以在 body 出来前就开始观察
+        const target = document.documentElement || document;
+        let rafId = null;
+
         const observer = new MutationObserver((mutations) => {
-            // 延迟执行，确保动态内容已渲染
-            setTimeout(() => {
+            // 检查是否有子节点变化，避免不必要的触发
+            const hasAddedNodes = mutations.some(m => m.addedNodes.length > 0);
+            if (!hasAddedNodes) return;
+
+            // 使用 requestAnimationFrame 进行限流，并防止同步死循环
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
                 applyReplacements();
-            }, 100);
+                rafId = null;
+            });
         });
 
-        observer.observe(document.body, {
+        observer.observe(target, {
             childList: true,
             subtree: true
         });
@@ -388,15 +421,6 @@
     function applyReplacements() {
         const replacements = loadReplacements();
         replaceMemberInfo(replacements);
-        
-        // 首次替换完成后，移除隐藏样式，使内容显示出来
-        const style = document.getElementById('hide-member-info-initial');
-        if (style) {
-            // 使用 setTimeout 确保 DOM 已经更新完毕再显示，增加一点平滑感
-            setTimeout(() => {
-                style.remove();
-            }, 50);
-        }
     }
 
     /**
@@ -408,11 +432,8 @@
             saveReplacements({ ...DEFAULT_REPLACEMENTS });
         }
 
-        // 立即执行替换
+        // 立即尝试替换一次
         applyReplacements();
-
-        // 设置 MutationObserver 处理动态内容
-        setupMutationObserver(loadReplacements());
 
         // 注册油猴菜单命令
         if (typeof GM_registerMenuCommand !== 'undefined') {
@@ -420,10 +441,13 @@
             GM_registerMenuCommand('🔄 立即重新替换', applyReplacements);
         }
 
-        console.log('[信息替换] 脚本已加载，当前规则:', loadReplacements());
+        console.log('[信息替换] 脚本初始化完成，当前规则:', loadReplacements());
     }
 
-    // 页面加载完成后初始化
+    // 启动早期观察器 (document-start 级别)
+    setupMutationObserver();
+
+    // 页面加载阶段性初始化
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
