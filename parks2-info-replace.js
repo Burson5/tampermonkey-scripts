@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
-// @author       You
-// @match        https://parks2.bandainamco-am.co.jp/member_mypage.html
-// @match        https://parks2.bandainamco-am.co.jp/admission_use_ticket.html
+// @author       burson5@qq.com
+// @match        https://parks2.bandainamco-am.co.jp/member_mypage.html*
+// @match        https://parks2.bandainamco-am.co.jp/admission_use_ticket.html*
 // @license      MIT
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
