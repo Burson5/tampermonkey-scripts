@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.5
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -54,16 +54,6 @@
 
     // ==================== 3. 核心文本替换 ====================
 
-    function buildReplaceRegexes(replacements) {
-        const regexes = [];
-        for (const [keyword, replacement] of Object.entries(replacements)) {
-            if (!keyword || !keyword.trim()) continue;
-            const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            regexes.push({ regex: new RegExp(escaped, 'gi'), replacement });
-        }
-        return regexes;
-    }
-
     function isSkippableElement(el) {
         if (!el || !el.tagName) return false;
         const tag = el.tagName.toLowerCase();
@@ -82,8 +72,8 @@
     }
 
     function replaceTextInDocument(replacements) {
-        const regexes = buildReplaceRegexes(replacements);
-        if (regexes.length === 0) return;
+        const entries = Object.entries(replacements).filter(([k]) => k && k.trim());
+        if (entries.length === 0) return;
 
         const walker = document.createTreeWalker(
             document.body || document.documentElement,
@@ -109,8 +99,12 @@
         for (const node of nodesToReplace) {
             let text = node.textContent;
             let modified = false;
-            for (const { regex, replacement } of regexes) {
-                if (regex.test(text)) {
+            for (const [keyword, replacement] of entries) {
+                const lowerText = text.toLowerCase();
+                const lowerKeyword = keyword.toLowerCase();
+                if (lowerText.includes(lowerKeyword)) {
+                    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escaped, 'gi');
                     text = text.replace(regex, replacement);
                     modified = true;
                 }
@@ -196,7 +190,7 @@
                     Outlook 邮件文本替换设置
                 </h3>
                 <p style="font-size:12px;color:#666;margin-bottom:10px;">
-                    匹配规则不区分大小写，将邮件正文中的"原始文字"替换为"替换为"。
+                    不区分大小写，将邮件正文中所有"原始文字"替换为"替换为"。
                 </p>
                 <div id="outlook-replacer-fields">
                     ${fieldsHtml || '<p style="color:#999;text-align:center;">暂无替换规则，请添加</p>'}
@@ -262,10 +256,7 @@
         });
 
         document.getElementById('ol-parks2-preset-btn').addEventListener('click', () => {
-            addRowToContainer(
-                '\u6c0f\u540d\uff1a[\u3000\\s]+(.+?)\\s*\u69d8',
-                '\u6c0f\u540d\uff1a\u3000'
-            );
+            addRowToContainer('氏名：', '氏名：\u3000');
         });
 
         panel.querySelectorAll('.ol-row-del-btn').forEach(btn => {
