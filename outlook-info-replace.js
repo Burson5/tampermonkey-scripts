@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -168,12 +168,19 @@
         const replacements = loadReplacements();
         const entries = Object.entries(replacements);
 
-        const fieldsHtml = entries.map(([keyword, replacement], idx) => `
-            <div class="outlook-replacer-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-                <input type="text" class="ol-field-keyword" value="${escapeHtml(keyword)}" placeholder="原始文字" style="flex:1;padding:5px;border:1px solid #ccc;border-radius:4px;">
-                <span style="color:#666;">→</span>
-                <input type="text" class="ol-field-replacement" value="${escapeHtml(replacement)}" placeholder="替换为" style="flex:1;padding:5px;border:1px solid #ccc;border-radius:4px;">
-                <button class="ol-row-del-btn" style="padding:5px 8px;cursor:pointer;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:12px;">✕</button>
+        const fieldsHtml = entries.map(([keyword, replacement]) => `
+            <div class="outlook-replacer-row" style="margin-bottom:10px;padding:8px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-size:12px;color:#888;min-width:24px;">原始</span>
+                    <input type="text" class="ol-field-keyword" value="${escapeHtml(keyword)}" placeholder="原始文字" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-size:12px;color:#888;min-width:24px;">替换</span>
+                    <input type="text" class="ol-field-replacement" value="${escapeHtml(replacement)}" placeholder="替换为" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
+                    <button class="ol-row-del-btn" style="padding:6px 10px;cursor:pointer;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:13px;white-space:nowrap;">✕</button>
+                </div>
             </div>
         `).join('');
 
@@ -183,11 +190,11 @@
             <div style="
                 position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
                 background:white;border:2px solid #333;border-radius:8px;
-                padding:20px;z-index:999999;width:100vw;max-width:520px;max-height:80vh;
+                padding:16px;z-index:999999;width:calc(100vw - 16px);max-width:560px;max-height:85vh;
                 overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);
-                font-family:sans-serif;
+                font-family:sans-serif;box-sizing:border-box;
             ">
-                <h3 style="margin-top:0;border-bottom:1px solid #ccc;padding-bottom:10px;text-align:center;">
+                <h3 style="margin-top:0;border-bottom:1px solid #ccc;padding-bottom:10px;text-align:center;font-size:16px;">
                     Outlook 邮件文本替换设置
                 </h3>
                 <p style="font-size:12px;color:#666;margin-bottom:10px;">
@@ -197,11 +204,11 @@
                     ${fieldsHtml || '<p style="color:#999;text-align:center;">暂无替换规则，请添加</p>'}
                 </div>
                 <div style="text-align:center;margin-top:10px;">
-                    <button id="ol-add-row-btn" style="padding:6px 16px;cursor:pointer;background:#3498db;color:white;border:none;border-radius:4px;font-size:13px;">＋ 添加规则</button>
+                    <button id="ol-add-row-btn" style="padding:8px 20px;cursor:pointer;background:#3498db;color:white;border:none;border-radius:4px;font-size:14px;">＋ 添加规则</button>
                 </div>
-                <div style="text-align:center;margin-top:20px;padding-top:15px;border-top:1px solid #eee;">
-                    <button id="ol-save-btn" style="padding:8px 25px;margin-right:10px;cursor:pointer;background:#4caf50;color:white;border:none;border-radius:4px;font-weight:bold;">保存并应用</button>
-                    <button id="ol-close-btn" style="padding:8px 15px;cursor:pointer;background:#9e9e9e;color:white;border:none;border-radius:4px;">取消</button>
+                <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #eee;">
+                    <button id="ol-save-btn" style="padding:10px 28px;margin-right:8px;cursor:pointer;background:#4caf50;color:white;border:none;border-radius:4px;font-weight:bold;font-size:14px;">保存并应用</button>
+                    <button id="ol-close-btn" style="padding:10px 18px;cursor:pointer;background:#9e9e9e;color:white;border:none;border-radius:4px;font-size:14px;">取消</button>
                 </div>
             </div>
             <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999998;" id="ol-overlay"></div>
@@ -220,20 +227,54 @@
 
             const row = document.createElement('div');
             row.className = 'outlook-replacer-row';
-            row.style.cssText = 'margin-bottom:8px;display:flex;align-items:center;gap:8px;';
+            row.style.cssText = 'margin-bottom:10px;padding:8px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;';
             row.innerHTML = `
-                <input type="text" class="ol-field-keyword" placeholder="原始文字" style="flex:1;padding:5px;border:1px solid #ccc;border-radius:4px;">
-                <span style="color:#666;">→</span>
-                <input type="text" class="ol-field-replacement" placeholder="替换为" style="flex:1;padding:5px;border:1px solid #ccc;border-radius:4px;">
-                <button class="ol-row-del-btn" style="padding:5px 8px;cursor:pointer;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:12px;">✕</button>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-size:12px;color:#888;min-width:24px;">原始</span>
+                    <input type="text" class="ol-field-keyword" placeholder="原始文字" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-size:12px;color:#888;min-width:24px;">替换</span>
+                    <input type="text" class="ol-field-replacement" placeholder="替换为" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
+                    <button class="ol-row-del-btn" style="padding:6px 10px;cursor:pointer;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:13px;white-space:nowrap;">✕</button>
+                </div>
             `;
             container.appendChild(row);
             row.querySelector('.ol-row-del-btn').addEventListener('click', () => row.remove());
+            row.querySelectorAll('.ol-paste-btn').forEach(pbtn => {
+                pbtn.addEventListener('click', async (e) => {
+                    const input = e.target.parentElement.querySelector('input');
+                    if (!input) return;
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        if (text) input.value = text;
+                    } catch {
+                        input.focus();
+                        input.select();
+                    }
+                });
+            });
         });
 
         panel.querySelectorAll('.ol-row-del-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.target.closest('.outlook-replacer-row').remove();
+            });
+        });
+
+        panel.querySelectorAll('.ol-paste-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const input = e.target.parentElement.querySelector('input');
+                if (!input) return;
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) input.value = text;
+                } catch {
+                    input.focus();
+                    input.select();
+                }
             });
         });
 
