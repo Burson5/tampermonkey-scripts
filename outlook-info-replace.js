@@ -123,29 +123,34 @@
         }
     }
 
-    // ==================== 4. 动态内容监听 ====================
+    // ==================== 4. URL 路径变化监听 ====================
 
-    let observer = null;
-    let pendingRafId = null;
+    let urlCheckTimer = null;
+    const URL_CHECK_MS = 300;
 
-    function setupMutationObserver() {
-        const target = document.documentElement || document.body || document;
+    function onUrlChanged() {
+        console.log('[Outlook替换] 检测到URL变化:', location.href);
+        clearTimeout(urlCheckTimer);
+        urlCheckTimer = setTimeout(() => {
+            applyReplacements();
+        }, URL_CHECK_MS);
+    }
 
-        observer = new MutationObserver((mutations) => {
-            const hasAddedNodes = mutations.some(m => m.addedNodes.length > 0);
-            if (!hasAddedNodes) return;
+    function setupUrlChangeListener() {
+        const originalPushState = history.pushState;
+        history.pushState = function() {
+            originalPushState.apply(this, arguments);
+            onUrlChanged();
+        };
 
-            if (pendingRafId) cancelAnimationFrame(pendingRafId);
-            pendingRafId = requestAnimationFrame(() => {
-                applyReplacements();
-                pendingRafId = null;
-            });
-        });
+        const originalReplaceState = history.replaceState;
+        history.replaceState = function() {
+            originalReplaceState.apply(this, arguments);
+            onUrlChanged();
+        };
 
-        observer.observe(target, {
-            childList: true,
-            subtree: true
-        });
+        window.addEventListener('popstate', onUrlChanged);
+        window.addEventListener('hashchange', onUrlChanged);
     }
 
     // ==================== 5. 配置弹窗 ====================
@@ -248,22 +253,25 @@
         });
     }
 
-    function setupHeaderPictureDblClick() {
+    function setupSettingsTriggerButton() {
         const tryBind = () => {
-            const pictureEl = document.querySelector('#mectrl_headerPicture');
-            if (pictureEl && !pictureEl.hasAttribute('data-outlook-dblclick')) {
-                pictureEl.style.cursor = 'pointer';
-                pictureEl.title = '双击打开文本替换设置';
-                pictureEl.addEventListener('dblclick', (e) => {
+            const container = document.querySelector('.mectrl_company');
+            if (container && !container.hasAttribute('data-outlook-btn-inserted')) {
+                const btn = document.createElement('button');
+                btn.textContent = '📧';
+                btn.title = '打开文本替换设置';
+                btn.style.cssText = 'cursor:pointer;border:none;background:transparent;font-size:16px;padding:4px 8px;border-radius:4px;';
+                btn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     createSettingsPanel();
                 });
-                pictureEl.setAttribute('data-outlook-dblclick', 'true');
-                console.log('[Outlook替换] 已绑定头像双击事件');
+                container.appendChild(btn);
+                container.setAttribute('data-outlook-btn-inserted', 'true');
+                console.log('[Outlook替换] 已插入设置按钮');
                 return true;
             }
-            return !!pictureEl;
+            return !!container;
         };
 
         if (!tryBind()) {
@@ -290,7 +298,7 @@
     }
 
     function init() {
-        setupHeaderPictureDblClick();
+        setupSettingsTriggerButton();
 
         const existing = loadReplacements();
         if (Object.keys(existing).length === 0) {
@@ -306,7 +314,7 @@
         console.log('[Outlook替换] 脚本初始化完成，当前规则:', loadReplacements());
     }
 
-    setupMutationObserver();
+    setupUrlChangeListener();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
