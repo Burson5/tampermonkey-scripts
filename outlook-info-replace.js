@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -23,7 +23,9 @@
     // ==================== 1. 重定向逻辑 ====================
 
     if (window.location.href.startsWith(REDIRECT_SOURCE)) {
-        window.location.replace(REDIRECT_TARGET);
+        setTimeout(() => {
+            window.location.replace(REDIRECT_TARGET);
+        }, 3000);
         return;
     }
 
