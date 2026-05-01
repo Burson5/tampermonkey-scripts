@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -145,7 +145,36 @@
         window.addEventListener('hashchange', onUrlChanged);
     }
 
-    // ==================== 5. 配置弹窗 ====================
+    // ==================== 5. DOM 异步内容兜底监听 ====================
+
+    let domDebounceTimer = null;
+    const DOM_DEBOUNCE_MS = 600;
+    let domObserver = null;
+
+    function setupDomContentObserver() {
+        const target = document.body || document.documentElement;
+        if (!target) {
+            setTimeout(setupDomContentObserver, 100);
+            return;
+        }
+
+        domObserver = new MutationObserver((mutations) => {
+            const hasAddedNodes = mutations.some(m => m.addedNodes.length > 0);
+            if (!hasAddedNodes) return;
+
+            clearTimeout(domDebounceTimer);
+            domDebounceTimer = setTimeout(() => {
+                applyReplacements();
+            }, DOM_DEBOUNCE_MS);
+        });
+
+        domObserver.observe(target, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    // ==================== 6. 配置弹窗 ====================
 
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -330,7 +359,7 @@
         }
     }
 
-    // ==================== 6. 主流程 ====================
+    // ==================== 7. 主流程 ====================
 
     function applyReplacements() {
         const replacements = loadReplacements();
@@ -340,6 +369,8 @@
     }
 
     function init() {
+        setupUrlChangeListener();
+        setupDomContentObserver();
         setupSettingsTriggerButton();
 
         const existing = loadReplacements();
@@ -355,8 +386,6 @@
 
         console.log('[Outlook替换] 脚本初始化完成，当前规则:', loadReplacements());
     }
-
-    setupUrlChangeListener();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
