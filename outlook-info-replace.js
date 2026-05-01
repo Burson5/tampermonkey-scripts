@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
 // @match        https://outlook.live.com/mail/*
+// @match        https://login.microsoftonline.com/common/oauth2/v2.0/authorize*
+// @match        https://login.live.com/oauth20_authorize.srf*
 // @license      MIT
 // @grant        GM_registerMenuCommand
 // @run-at       document-start
@@ -29,7 +31,82 @@
         return;
     }
 
-    // ==================== 2. 数据管理 ====================
+    // ==================== 2. 登录页自动填充 ====================
+
+    const LOGIN_EMAIL_SELECTOR = 'input[type="email"]';
+    const LOGIN_PASSWORD_SELECTOR = '#passwordEntry, [name="passwd"], #i0118, input[type="password"]';
+    const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+
+    function fillInputField(input, value) {
+        if (!input) return;
+        input.focus();
+        nativeInputSetter.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function isLoginPage() {
+        return !!(document.querySelector(LOGIN_EMAIL_SELECTOR) || document.querySelector(LOGIN_PASSWORD_SELECTOR));
+    }
+
+    function setupLoginAutoFill() {
+        const tryBind = () => {
+            if (!isLoginPage()) return false;
+            if (document.getElementById('ol-login-fill-btn')) return true;
+
+            const btn = document.createElement('button');
+            btn.id = 'ol-login-fill-btn';
+            btn.textContent = '🔑';
+            btn.title = '从剪贴板填充帐密';
+            btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999997;width:48px;height:48px;border-radius:50%;background:#0078d4;color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;';
+
+            btn.addEventListener('click', async () => {
+                try {
+                    const clipText = await navigator.clipboard.readText();
+                    if (!clipText || !clipText.trim()) {
+                        console.log('[Outlook登录] 剪贴板为空');
+                        return;
+                    }
+
+                    const parts = clipText.trim().split(/\s+/);
+                    if (parts.length < 2) {
+                        console.log('[Outlook登录] 剪贴板格式应为: 邮箱 密码');
+                        return;
+                    }
+
+                    const email = parts[0];
+                    const password = parts.slice(1).join(' ');
+
+                    fillInputField(document.querySelector(LOGIN_EMAIL_SELECTOR), email);
+                    console.log('[Outlook登录] 已填充邮箱');
+
+                    fillInputField(document.querySelector(LOGIN_PASSWORD_SELECTOR), password);
+                    console.log('[Outlook登录] 已填充密码');
+                } catch (e) {
+                    console.error('[Outlook登录] 剪贴板读取失败:', e);
+                }
+            });
+
+            document.body.appendChild(btn);
+            console.log('[Outlook登录] 已添加填充按钮');
+            return true;
+        };
+
+        if (!tryBind()) {
+            const bindObserver = new MutationObserver(() => {
+                if (tryBind()) {
+                    bindObserver.disconnect();
+                }
+            });
+            bindObserver.observe(document.body || document.documentElement, {
+                childList: true,
+                subtree: true
+            });
+            setTimeout(() => bindObserver.disconnect(), 30000);
+        }
+    }
+
+    // ==================== 3. 数据管理 ====================
 
     function loadReplacements() {
         try {
@@ -54,7 +131,7 @@
         }
     }
 
-    // ==================== 3. 核心文本替换 ====================
+    // ==================== 4. 核心文本替换 ====================
 
     function isSkippableElement(el) {
         if (!el || !el.tagName) return false;
@@ -117,7 +194,7 @@
         }
     }
 
-    // ==================== 4. URL 路径变化监听 ====================
+    // ==================== 5. URL 路径变化监听 ====================
 
     let urlCheckTimer = null;
     const URL_CHECK_MS = 300;
@@ -147,7 +224,7 @@
         window.addEventListener('hashchange', onUrlChanged);
     }
 
-    // ==================== 5. DOM 异步内容兜底监听 ====================
+    // ==================== 6. DOM 异步内容兜底监听 ====================
 
     let domDebounceTimer = null;
     const DOM_DEBOUNCE_MS = 600;
@@ -176,7 +253,7 @@
         });
     }
 
-    // ==================== 6. 配置弹窗 ====================
+    // ==================== 7. 配置弹窗 ====================
 
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -361,7 +438,7 @@
         }
     }
 
-    // ==================== 7. 主流程 ====================
+    // ==================== 8. 主流程 ====================
 
     function applyReplacements() {
         const replacements = loadReplacements();
@@ -371,6 +448,7 @@
     }
 
     function init() {
+        setupLoginAutoFill();
         setupUrlChangeListener();
         setupDomContentObserver();
         setupSettingsTriggerButton();
