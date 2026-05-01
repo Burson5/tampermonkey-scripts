@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -31,25 +31,31 @@
 
     // ==================== 2. 数据管理 ====================
 
+    /**
+     * 从 localStorage 加载替换规则
+     */
     function loadReplacements() {
         try {
-            const stored = GM_getValue(STORAGE_KEY);
+            const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 return JSON.parse(stored);
             }
         } catch (e) {
-            console.error('[Outlook替换] 读取存储失败:', e);
+            console.error('[信息替换] 读取 localStorage 失败:', e);
         }
-        return JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS));
+        return { ...DEFAULT_REPLACEMENTS };
     }
 
+    /**
+     * 保存替换规则到 localStorage
+     */
     function saveReplacements(replacements) {
         try {
-            GM_setValue(STORAGE_KEY, JSON.stringify(replacements));
-            console.log('[Outlook替换] 已保存替换规则');
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(replacements));
+            console.log('[信息替换] 已保存到 localStorage');
             return true;
         } catch (e) {
-            console.error('[Outlook替换] 保存失败:', e);
+            console.error('[信息替换] 保存到 localStorage 失败:', e);
             return false;
         }
     }
@@ -203,7 +209,7 @@
                 <div id="outlook-replacer-fields">
                     ${fieldsHtml || '<p style="color:#999;text-align:center;">暂无替换规则，请添加</p>'}
                 </div>
-                <div style="text-align:center;margin-top:10px;">
+                <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
                     <button id="ol-add-row-btn" style="padding:8px 20px;cursor:pointer;background:#3498db;color:white;border:none;border-radius:4px;font-size:14px;">＋ 添加规则</button>
                 </div>
                 <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #eee;">
@@ -220,7 +226,7 @@
         document.getElementById('ol-close-btn').addEventListener('click', closePanel);
         document.getElementById('ol-overlay').addEventListener('click', closePanel);
 
-        document.getElementById('ol-add-row-btn').addEventListener('click', () => {
+        function addRowToContainer(keywordValue, replacementValue) {
             const container = document.getElementById('outlook-replacer-fields');
             const noRuleHint = container.querySelector('p');
             if (noRuleHint) noRuleHint.remove();
@@ -231,12 +237,12 @@
             row.innerHTML = `
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
                     <span style="font-size:12px;color:#888;min-width:24px;">原始</span>
-                    <input type="text" class="ol-field-keyword" placeholder="原始文字" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <input type="text" class="ol-field-keyword" value="${escapeHtml(keywordValue || '')}" placeholder="原始文字" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
                     <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <span style="font-size:12px;color:#888;min-width:24px;">替换</span>
-                    <input type="text" class="ol-field-replacement" placeholder="替换为" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+                    <input type="text" class="ol-field-replacement" value="${escapeHtml(replacementValue || '')}" placeholder="替换为" style="flex:1;min-width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
                     <button class="ol-paste-btn" style="padding:6px 10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;font-size:13px;white-space:nowrap;">📋</button>
                     <button class="ol-row-del-btn" style="padding:6px 10px;cursor:pointer;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:13px;white-space:nowrap;">✕</button>
                 </div>
@@ -256,6 +262,17 @@
                     }
                 });
             });
+        }
+
+        document.getElementById('ol-add-row-btn').addEventListener('click', () => {
+            addRowToContainer('', '');
+        });
+
+        document.getElementById('ol-parks2-preset-btn').addEventListener('click', () => {
+            addRowToContainer(
+                '\u6c0f\u540d\uff1a[\u3000\\s]+(.+?)\\s*\u69d8',
+                '\u6c0f\u540d\uff1a\u3000'
+            );
         });
 
         panel.querySelectorAll('.ol-row-del-btn').forEach(btn => {
