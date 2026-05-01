@@ -183,7 +183,7 @@
             <div style="
                 position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
                 background:white;border:2px solid #333;border-radius:8px;
-                padding:20px;z-index:999999;width:520px;max-height:80vh;
+                padding:20px;z-index:999999;width:100vw;max-width:520px;max-height:80vh;
                 overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);
                 font-family:sans-serif;
             ">
