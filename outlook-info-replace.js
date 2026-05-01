@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
 // @match        https://outlook.live.com/mail/*
 // @license      MIT
 // @grant        GM_registerMenuCommand
-// @grant        GM_setValue
-// @grant        GM_getValue
 // @run-at       document-start
 // ==/UserScript==
 
@@ -31,9 +29,6 @@
 
     // ==================== 2. 数据管理 ====================
 
-    /**
-     * 从 localStorage 加载替换规则
-     */
     function loadReplacements() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
@@ -41,21 +36,18 @@
                 return JSON.parse(stored);
             }
         } catch (e) {
-            console.error('[信息替换] 读取 localStorage 失败:', e);
+            console.error('[Outlook替换] 读取 localStorage 失败:', e);
         }
-        return { ...DEFAULT_REPLACEMENTS };
+        return JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS));
     }
 
-    /**
-     * 保存替换规则到 localStorage
-     */
     function saveReplacements(replacements) {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(replacements));
-            console.log('[信息替换] 已保存到 localStorage');
+            console.log('[Outlook替换] 已保存到 localStorage');
             return true;
         } catch (e) {
-            console.error('[信息替换] 保存到 localStorage 失败:', e);
+            console.error('[Outlook替换] 保存到 localStorage 失败:', e);
             return false;
         }
     }
@@ -211,6 +203,7 @@
                 </div>
                 <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
                     <button id="ol-add-row-btn" style="padding:8px 20px;cursor:pointer;background:#3498db;color:white;border:none;border-radius:4px;font-size:14px;">＋ 添加规则</button>
+                    <button id="ol-parks2-preset-btn" style="padding:8px 16px;cursor:pointer;background:#ff9800;color:white;border:none;border-radius:4px;font-size:14px;display:none;">parks2规则</button>
                 </div>
                 <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #eee;">
                     <button id="ol-save-btn" style="padding:10px 28px;margin-right:8px;cursor:pointer;background:#4caf50;color:white;border:none;border-radius:4px;font-weight:bold;font-size:14px;">保存并应用</button>
