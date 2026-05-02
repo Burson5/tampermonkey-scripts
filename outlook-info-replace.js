@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         outlook-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
@@ -15,6 +15,27 @@
 
 (function() {
     'use strict';
+
+    // ==================== 0. 初始防闪烁处理 ====================
+    (function injectHidingStyle() {
+        const style = document.createElement('style');
+        style.id = 'outlook-hide-plaintext-initial';
+        style.textContent = `
+            .PlainText:not([data-replaced="true"]) { opacity: 0 !important; }
+            .PlainText[data-replaced="true"] { opacity: 1 !important; transition: opacity 0.15s ease-in-out; }
+        `;
+        if (document.documentElement) {
+            document.documentElement.appendChild(style);
+        } else {
+            const observer = new MutationObserver(() => {
+                if (document.documentElement) {
+                    document.documentElement.appendChild(style);
+                    observer.disconnect();
+                }
+            });
+            observer.observe(document, { childList: true, subtree: true });
+        }
+    })();
 
     const STORAGE_KEY = 'outlook_text_replacements';
     const REDIRECT_SOURCE = 'https://account.live.com/proofs/Add';
@@ -133,65 +154,31 @@
 
     // ==================== 4. 核心文本替换 ====================
 
-    function isSkippableElement(el) {
-        if (!el || !el.tagName) return false;
-        const tag = el.tagName.toLowerCase();
-        return tag === 'script' || tag === 'style' || tag === 'noscript'
-            || tag === 'textarea' || tag === 'input' || tag === 'select'
-            || tag === 'option' || tag === 'code' || tag === 'pre';
-    }
-
-    function isInsidePanel(node) {
-        let el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-        while (el) {
-            if (el.id === 'outlook-replacer-panel') return true;
-            el = el.parentElement;
-        }
-        return false;
-    }
-
-    function replaceTextInDocument(replacements) {
+    function replaceTextInPlainText(replacements) {
         const entries = Object.entries(replacements).filter(([k]) => k && k.trim());
         if (entries.length === 0) return;
 
-        const walker = document.createTreeWalker(
-            document.body || document.documentElement,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: function(node) {
-                    const parent = node.parentElement;
-                    if (!parent || !parent.tagName) return NodeFilter.FILTER_REJECT;
-                    if (isSkippableElement(parent)) return NodeFilter.FILTER_REJECT;
-                    if (isInsidePanel(node)) return NodeFilter.FILTER_REJECT;
-                    if (!node.textContent || !node.textContent.trim()) return NodeFilter.FILTER_REJECT;
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-            }
-        );
+        const elements = document.querySelectorAll('.PlainText');
+        elements.forEach(el => {
+            if (el.hasAttribute('data-replaced')) return;
 
-        const nodesToReplace = [];
-        let textNode;
-        while ((textNode = walker.nextNode())) {
-            nodesToReplace.push(textNode);
-        }
-
-        for (const node of nodesToReplace) {
-            let text = node.textContent;
+            let html = el.innerHTML;
             let modified = false;
             for (const [keyword, replacement] of entries) {
-                const lowerText = text.toLowerCase();
+                const lowerHtml = html.toLowerCase();
                 const lowerKeyword = keyword.toLowerCase();
-                if (lowerText.includes(lowerKeyword)) {
+                if (lowerHtml.includes(lowerKeyword)) {
                     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const regex = new RegExp(escaped, 'gi');
-                    text = text.replace(regex, replacement);
+                    html = html.replace(regex, replacement);
                     modified = true;
                 }
             }
             if (modified) {
-                node.textContent = text;
+                el.innerHTML = html;
             }
-        }
+            el.setAttribute('data-replaced', 'true');
+        });
     }
 
     // ==================== 5. URL 路径变化监听 ====================
@@ -227,7 +214,7 @@
     // ==================== 6. DOM 异步内容兜底监听 ====================
 
     let domDebounceTimer = null;
-    const DOM_DEBOUNCE_MS = 600;
+    const DOM_DEBOUNCE_MS = 300;
     let domObserver = null;
 
     function setupDomContentObserver() {
@@ -238,8 +225,23 @@
         }
 
         domObserver = new MutationObserver((mutations) => {
-            const hasAddedNodes = mutations.some(m => m.addedNodes.length > 0);
-            if (!hasAddedNodes) return;
+            let foundPlainText = false;
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.classList && node.classList.contains('PlainText')) {
+                            foundPlainText = true;
+                            break;
+                        }
+                        if (node.querySelector && node.querySelector('.PlainText')) {
+                            foundPlainText = true;
+                            break;
+                        }
+                    }
+                }
+                if (foundPlainText) break;
+            }
+            if (!foundPlainText) return;
 
             clearTimeout(domDebounceTimer);
             domDebounceTimer = setTimeout(() => {
@@ -398,6 +400,9 @@
                 }
             });
             saveReplacements(newReplacements);
+            document.querySelectorAll('.PlainText[data-replaced]').forEach(el => {
+                el.removeAttribute('data-replaced');
+            });
             applyReplacements();
             closePanel();
         });
@@ -443,7 +448,7 @@
     function applyReplacements() {
         const replacements = loadReplacements();
         if (Object.keys(replacements).length > 0) {
-            replaceTextInDocument(replacements);
+            replaceTextInPlainText(replacements);
         }
     }
 
@@ -461,7 +466,12 @@
 
         if (typeof GM_registerMenuCommand !== 'undefined') {
             GM_registerMenuCommand('📧 打开文本替换设置', createSettingsPanel);
-            GM_registerMenuCommand('🔄 立即重新替换', applyReplacements);
+            GM_registerMenuCommand('🔄 立即重新替换', () => {
+                document.querySelectorAll('.PlainText[data-replaced]').forEach(el => {
+                    el.removeAttribute('data-replaced');
+                });
+                applyReplacements();
+            });
         }
 
         console.log('[Outlook替换] 脚本初始化完成，当前规则:', loadReplacements());
