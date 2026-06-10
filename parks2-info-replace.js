@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         parks2-info-replace
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  替换页面上的个人信息，并在localStorage中保存替换数据
 // @author       burson5@qq.com
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html*
 // @match        https://parks2.bandainamco-am.co.jp/admission_use_ticket.html*
+// @match        https://parks2.bandainamco-am.co.jp/member_history.html*
 // @license      MIT
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
@@ -63,12 +64,14 @@
         style.textContent = `
             /* 初始隐藏目标元素 */
             .block-mypage-member-info-value:not([data-replaced="true"]),
-            .block-mypage-coupon-list-item-code-value:not([data-replaced="true"]) { 
+            .block-mypage-coupon-list-item-code-value:not([data-replaced="true"]),
+            .block-mypage-history-block-detail-contents-block-content:not([data-replaced="true"]) { 
                 opacity: 0 !important; 
             }
             /* 替换后显示，带一点淡入效果 */
             .block-mypage-member-info-value[data-replaced="true"],
-            .block-mypage-coupon-list-item-code-value[data-replaced="true"] { 
+            .block-mypage-coupon-list-item-code-value[data-replaced="true"],
+            .block-mypage-history-block-detail-contents-block-content[data-replaced="true"] { 
                 opacity: 1 !important;
                 transition: opacity 0.2s ease-in-out; 
             }
@@ -165,6 +168,33 @@
             }
         }
 
+        // --- 3. 从订单历史详情页提取姓名/地址/电话 ---
+        const historyBlocks = document.querySelectorAll('dl.block-mypage-history-block-detail-contents-block');
+        historyBlocks.forEach(block => {
+            const dt = block.querySelector('.block-mypage-history-block-detail-contents-block-label');
+            const dd = block.querySelector('.block-mypage-history-block-detail-contents-block-content');
+            if (!dt || !dd) return;
+
+            const labelText = dt.textContent.trim();
+            if (labelText === 'ご依頼主' && !extracted['氏名（漢字）']) {
+                extracted['氏名（漢字）'] = dd.hasAttribute('data-original-value')
+                    ? dd.getAttribute('data-original-value')
+                    : dd.textContent.trim();
+            }
+
+            if (labelText === 'お届け先') {
+                const rawValue = dd.hasAttribute('data-original-value')
+                    ? dd.getAttribute('data-original-value')
+                    : getMultilineText(dd);
+                const parsed = parseHistoryRecipientText(rawValue);
+                Object.keys(parsed).forEach(key => {
+                    if (!extracted[key] && parsed[key]) {
+                        extracted[key] = parsed[key];
+                    }
+                });
+            }
+        });
+
         return extracted;
     }
 
@@ -227,6 +257,40 @@
             // 无论是否替换，都标记为已处理以显示内容
             ticketNameElem.setAttribute('data-replaced', 'true');
         }
+
+        // --- 3. 处理订单历史详情页 ---
+        const historyBlocks = document.querySelectorAll('dl.block-mypage-history-block-detail-contents-block');
+        historyBlocks.forEach(block => {
+            const dt = block.querySelector('.block-mypage-history-block-detail-contents-block-label');
+            const dd = block.querySelector('.block-mypage-history-block-detail-contents-block-content');
+            if (!dt || !dd) return;
+
+            const labelText = dt.textContent.trim();
+            if (labelText === 'ご依頼主' || labelText === 'お届け先') {
+                setupDblClick(dt);
+            }
+
+            if (dd.hasAttribute('data-replaced')) return;
+
+            if (labelText === 'ご依頼主') {
+                saveOriginalValue(dd, '氏名（漢字）');
+                const replacement = replacements['氏名（漢字）'];
+                if (replacement !== undefined && replacement.trim() !== '') {
+                    dd.textContent = replacement;
+                }
+                dd.setAttribute('data-replaced', 'true');
+                return;
+            }
+
+            if (labelText === 'お届け先') {
+                saveOriginalValue(dd, 'お届け先');
+                applyHistoryRecipientValue(dd, replacements);
+                dd.setAttribute('data-replaced', 'true');
+                return;
+            }
+
+            dd.setAttribute('data-replaced', 'true');
+        });
     }
 
     /**
@@ -234,11 +298,21 @@
      */
     function saveOriginalValue(elem, labelText) {
         if (!elem.hasAttribute('data-original-value')) {
-            const originalVal = (labelText === '性別' && elem.querySelector('span')) 
-                ? elem.querySelector('span').textContent.trim() 
-                : elem.textContent.trim();
+            const originalVal = getOriginalValue(elem, labelText);
             elem.setAttribute('data-original-value', originalVal);
         }
+    }
+
+    function getOriginalValue(elem, labelText) {
+        if (labelText === '性別' && elem.querySelector('span')) {
+            return elem.querySelector('span').textContent.trim();
+        }
+
+        if (labelText === 'お届け先') {
+            return getMultilineText(elem);
+        }
+
+        return elem.textContent.trim();
     }
 
     /**
@@ -257,6 +331,104 @@
         }
         // 标记已替换，CSS 将使其可见
         elem.setAttribute('data-replaced', 'true');
+    }
+
+    function getMultilineText(elem) {
+        return elem.innerHTML
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/<[^>]+>/g, '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line !== '')
+            .join('\n')
+            .trim();
+    }
+
+    function parseHistoryRecipientText(text) {
+        const extracted = {};
+        const lines = String(text || '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line !== '');
+
+        if (lines.length === 0) {
+            return extracted;
+        }
+
+        const nameLine = lines[0] || '';
+        const nameMatch = nameLine.match(/^(.*?)\s*\((.*?)\)$/);
+        if (nameMatch) {
+            extracted['氏名（漢字）'] = nameMatch[1].trim();
+            extracted['氏名（カナ）'] = nameMatch[2].trim();
+        } else if (nameLine) {
+            extracted['氏名（漢字）'] = nameLine;
+        }
+
+        if (lines[1]) {
+            extracted['郵便番号'] = lines[1];
+        }
+
+        if (lines[2]) {
+            const addressParts = splitAddress(lines[2]);
+            Object.assign(extracted, addressParts);
+        }
+
+        if (lines[3]) {
+            extracted['電話番号'] = lines[3];
+        }
+
+        return extracted;
+    }
+
+    function splitAddress(addressText) {
+        const extracted = {};
+        const address = String(addressText || '').trim();
+        if (!address) {
+            return extracted;
+        }
+
+        const prefectureMatch = address.match(/^(.+?[都道府県])\s*(.*)$/);
+        if (prefectureMatch) {
+            extracted['都道府県'] = prefectureMatch[1].trim();
+            const remaining = prefectureMatch[2].trim();
+            const numberIndex = remaining.search(/\d/);
+            if (numberIndex >= 0) {
+                extracted['市区町村'] = remaining.slice(0, numberIndex).trim();
+                extracted['丁目・番地'] = remaining.slice(numberIndex).trim();
+            } else {
+                extracted['市区町村'] = remaining;
+            }
+            return extracted;
+        }
+
+        extracted['市区町村'] = address;
+        return extracted;
+    }
+
+    function formatHistoryRecipient(replacements) {
+        const nameKanji = (replacements['氏名（漢字）'] || '').trim();
+        const nameKana = (replacements['氏名（カナ）'] || '').trim();
+        const postalCode = (replacements['郵便番号'] || '').trim();
+        const prefecture = (replacements['都道府県'] || '').trim();
+        const city = (replacements['市区町村'] || '').trim();
+        const street = (replacements['丁目・番地'] || '').trim();
+        const phone = (replacements['電話番号'] || '').trim();
+
+        const address = `${prefecture}${prefecture && (city || street) ? ' ' : ''}${city}${street}`.trim();
+        const nameLine = nameKanji && nameKana ? `${nameKanji}(${nameKana})` : (nameKanji || nameKana);
+
+        return [nameLine, postalCode, address, phone]
+            .filter(line => line !== '')
+            .map(line => escapeHtml(line))
+            .join('<br>');
+    }
+
+    function applyHistoryRecipientValue(elem, replacements) {
+        const formatted = formatHistoryRecipient(replacements);
+        if (formatted) {
+            elem.innerHTML = formatted;
+        }
     }
 
     /**
@@ -392,7 +564,7 @@
                 newReplacements[label] = input.value.trim();
             });
             saveReplacements(newReplacements);
-            applyReplacements();
+            reapplyReplacements();
             panel.remove();
             alert('设置已保存并应用');
         });
@@ -423,6 +595,18 @@
         replaceMemberInfo(replacements);
     }
 
+    function reapplyReplacements() {
+        document.querySelectorAll(
+            '.block-mypage-member-info-value[data-replaced], ' +
+            '.block-mypage-coupon-list-item-code-value[data-replaced], ' +
+            '.block-mypage-history-block-detail-contents-block-content[data-replaced]'
+        ).forEach(elem => {
+            elem.removeAttribute('data-replaced');
+        });
+
+        applyReplacements();
+    }
+
     /**
      * 初始化
      */
@@ -438,7 +622,7 @@
         // 注册油猴菜单命令
         if (typeof GM_registerMenuCommand !== 'undefined') {
             GM_registerMenuCommand('🔧 打开替换设置', createSettingsPanel);
-            GM_registerMenuCommand('🔄 立即重新替换', applyReplacements);
+            GM_registerMenuCommand('🔄 立即重新替换', reapplyReplacements);
         }
 
         console.log('[信息替换] 脚本初始化完成，当前规则:', loadReplacements());
