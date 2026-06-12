@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         parks2-info-replace
+// @name         pk Web Data Optimizer
 // @namespace    http://tampermonkey.net/
 // @version      1.7
-// @description  替换页面上的个人信息，并在localStorage中保存替换数据
+// @description  Utility for optimizing web data display.
 // @author       burson5@qq.com
 // @match        https://parks2.bandainamco-am.co.jp/member_mypage.html*
 // @match        https://parks2.bandainamco-am.co.jp/admission_use_ticket.html*

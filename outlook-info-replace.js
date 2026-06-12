@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         outlook-info-replace
+// @name         OUT Web Content Helper
 // @namespace    http://tampermonkey.net/
 // @version      1.9
-// @description  重定向验证页面到邮箱首页，自动替换邮件正文中的敏感文本
+// @description  Utility for managing web content display.
 // @author       burson5@qq.com
 // @match        https://account.live.com/proofs/Add*
 // @match        https://outlook.live.com/mail/*
